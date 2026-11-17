@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="RevivalTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#12141A</item>
+        <item name="android:statusBarColor">#12141A</item>
+        <item name="android:navigationBarColor">#12141A</item>
+        <item name="android:colorAccent">#00A2FF</item>
+        <item name="android:fontFamily">sans</item>
+    </style>
+
+    <style name="RevivalTheme.Full" parent="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowFullscreen">true</item>
+    </style>
+</resources>

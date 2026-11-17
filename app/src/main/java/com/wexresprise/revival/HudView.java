@@ -71,7 +71,17 @@ public class HudView extends View {
         drawJump(canvas);
     }
 
+    @Override
+    public void draw(Canvas canvas) {
+        try {
+            super.draw(canvas);
+        } catch (Throwable t) {
+            CrashLog.reportUi(getContext(), t);
+        }
+    }
+
     private void drawNames(Canvas canvas) {
+        if (renderer == null) return;
         RevivalSession s = RevivalSession.current;
         if (s == null) return;
         for (RemotePlayer p : s.snapshot()) {
@@ -151,6 +161,15 @@ public class HudView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent e) {
+        try {
+            return handleTouch(e);
+        } catch (Throwable t) {
+            CrashLog.reportUi(getContext(), t);
+            return true;
+        }
+    }
+
+    private boolean handleTouch(MotionEvent e) {
         int action = e.getActionMasked();
         switch (action) {
             case MotionEvent.ACTION_DOWN:

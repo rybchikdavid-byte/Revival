@@ -34,9 +34,44 @@ public class CatalogActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        theme = YearTheme.of(Prefs.year(this));
-        custom = loadCustom();
-        render();
+        try {
+            theme = YearTheme.of(Prefs.year(this));
+            custom = loadCustom();
+            render();
+        } catch (Throwable t) {
+            try {
+                CrashLog.save(this, Thread.currentThread(), t);
+            } catch (Throwable ignored) {
+            }
+            showError(t);
+        }
+    }
+
+    private void showError(Throwable error) {
+        try {
+            android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+            scroll.setBackgroundColor(0xFF12141A);
+            TextView text = new TextView(this);
+            text.setText("Каталог не открылся.\n\n" + android.util.Log.getStackTraceString(error)
+                    + "\n\nЛог: Downloads/Revival-crash.txt");
+            text.setTextColor(0xFFD6DCE4);
+            text.setTextSize(12f);
+            text.setPadding(Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16), Ui.dp(this, 16));
+            scroll.addView(text);
+            scroll.setOnClickListener(v -> finish());
+            setContentView(scroll);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        try {
+            return super.dispatchTouchEvent(ev);
+        } catch (Throwable t) {
+            CrashLog.reportUi(this, t);
+            return true;
+        }
     }
 
     private void render() {

@@ -28,6 +28,15 @@ public class AvatarView extends View {
     }
 
     @Override
+    public void draw(Canvas canvas) {
+        try {
+            super.draw(canvas);
+        } catch (Throwable t) {
+            CrashLog.reportUi(getContext(), t);
+        }
+    }
+
+    @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         RectF box = new RectF(getPaddingLeft(), getPaddingTop(),

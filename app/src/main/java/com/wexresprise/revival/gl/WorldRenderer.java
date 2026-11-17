@@ -84,8 +84,31 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
     private float skyG = 0.78f;
     private float skyB = 0.93f;
 
+    public interface ErrorListener {
+        void onError(Throwable t);
+    }
+
+    private volatile ErrorListener errorListener;
+    private volatile boolean failed;
+
     public WorldRenderer(World world) {
         this.world = world;
+    }
+
+    public void setErrorListener(ErrorListener l) {
+        this.errorListener = l;
+    }
+
+    private void fail(Throwable t) {
+        if (failed) return;
+        failed = true;
+        ErrorListener l = errorListener;
+        if (l != null) {
+            try {
+                l.onError(t);
+            } catch (Throwable ignored) {
+            }
+        }
     }
 
     public void setSky(int color) {
@@ -96,24 +119,45 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
 
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST);
-        GLES20.glDisable(GLES20.GL_CULL_FACE);
-        GLES20.glClearColor(skyR, skyG, skyB, 1f);
-        buildCube();
-        buildProgram();
-        buildStudTexture();
+        try {
+            GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+            GLES20.glDisable(GLES20.GL_CULL_FACE);
+            GLES20.glClearColor(skyR, skyG, skyB, 1f);
+            buildCube();
+            buildProgram();
+            buildStudTexture();
+        } catch (Throwable t) {
+            fail(t);
+        }
     }
 
     @Override
     public void onSurfaceChanged(GL10 gl, int w, int h) {
-        width = Math.max(1, w);
-        height = Math.max(1, h);
-        GLES20.glViewport(0, 0, width, height);
-        Matrix.perspectiveM(proj, 0, 62f, (float) width / (float) height, 0.25f, 1400f);
+        try {
+            width = Math.max(1, w);
+            height = Math.max(1, h);
+            GLES20.glViewport(0, 0, width, height);
+            Matrix.perspectiveM(proj, 0, 62f, (float) width / (float) height, 0.25f, 1400f);
+        } catch (Throwable t) {
+            fail(t);
+        }
     }
 
     @Override
     public void onDrawFrame(GL10 gl) {
+        if (failed) {
+            GLES20.glClearColor(skyR, skyG, skyB, 1f);
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+            return;
+        }
+        try {
+            drawFrame();
+        } catch (Throwable t) {
+            fail(t);
+        }
+    }
+
+    private void drawFrame() {
         update();
 
         GLES20.glClearColor(skyR, skyG, skyB, 1f);
@@ -301,6 +345,11 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         GLES20.glAttachShader(program, vs);
         GLES20.glAttachShader(program, fs);
         GLES20.glLinkProgram(program);
+        int[] linked = new int[1];
+        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, linked, 0);
+        if (linked[0] == 0) {
+            throw new RuntimeException("link: " + GLES20.glGetProgramInfoLog(program));
+        }
         aPos = GLES20.glGetAttribLocation(program, "aPos");
         aNormal = GLES20.glGetAttribLocation(program, "aNormal");
         aUv = GLES20.glGetAttribLocation(program, "aUv");
@@ -329,6 +378,13 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         int sh = GLES20.glCreateShader(type);
         GLES20.glShaderSource(sh, src);
         GLES20.glCompileShader(sh);
+        int[] ok = new int[1];
+        GLES20.glGetShaderiv(sh, GLES20.GL_COMPILE_STATUS, ok, 0);
+        if (ok[0] == 0) {
+            String log = GLES20.glGetShaderInfoLog(sh);
+            GLES20.glDeleteShader(sh);
+            throw new RuntimeException("shader: " + log);
+        }
         return sh;
     }
 

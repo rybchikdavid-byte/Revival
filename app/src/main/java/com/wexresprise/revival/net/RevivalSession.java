@@ -20,6 +20,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -52,6 +56,20 @@ public class RevivalSession {
     private volatile Runnable readyCallback;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    /**
+     * Все записи в сокеты идут здесь. Писать в сокет из UI-потока нельзя:
+     * Android бросает NetworkOnMainThreadException, и приложение падает.
+     */
+    private final ExecutorService writer = new ThreadPoolExecutor(
+            1, 1, 0L, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(32),
+            r -> {
+                Thread t = new Thread(r, "revival-writer");
+                t.setDaemon(true);
+                return t;
+            },
+            new ThreadPoolExecutor.DiscardOldestPolicy());
 
     private ServerSocket server;
     private final List<Peer> peers = new CopyOnWriteArrayList<>();
@@ -198,6 +216,11 @@ public class RevivalSession {
                 String text = sanitize(p.length > 1 ? p[1] : "", 200);
                 if (text.isEmpty()) return;
                 broadcast("CHAT|" + peer.id + "|" + text, peer);
+                final String who = peer.nick;
+                main.post(() -> {
+                    Listener l = listener;
+                    if (l != null) l.onChat(who, text);
+                });
                 break;
             }
             default:
@@ -316,29 +339,39 @@ public class RevivalSession {
 
     // ------------------------------------------------------------ outgoing
 
-    public void sendPosition(float x, float y, float z, float yaw) {
-        if (role == HOST) {
-            broadcast("POS|1|" + x + "|" + y + "|" + z + "|" + yaw, null);
-        } else if (role == CLIENT && out != null) {
-            out.println("POS|" + x + "|" + y + "|" + z + "|" + yaw);
-        }
+    public void sendPosition(final float x, final float y, final float z, final float yaw) {
+        if (role == SOLO || closed.get()) return;
+        writer.execute(() -> {
+            if (closed.get()) return;
+            if (role == HOST) {
+                broadcast("POS|1|" + x + "|" + y + "|" + z + "|" + yaw, null);
+            } else if (out != null) {
+                out.println("POS|" + x + "|" + y + "|" + z + "|" + yaw);
+            }
+        });
     }
 
     public void sendChat(String text) {
-        String clean = sanitize(text, 200);
+        final String clean = sanitize(text, 200);
         if (clean.isEmpty()) return;
-        if (role == SOLO) {
+        if (role != SOLO && !closed.get()) {
+            writer.execute(() -> {
+                if (closed.get()) return;
+                if (role == HOST) {
+                    broadcast("CHAT|1|" + clean, null);
+                } else if (out != null) {
+                    out.println("CHAT|" + clean);
+                }
+            });
+        }
+        dispatchChat(nick, clean);
+    }
+
+    private void dispatchChat(final String who, final String text) {
+        main.post(() -> {
             Listener l = listener;
-            if (l != null) l.onChat(nick, clean);
-            return;
-        }
-        if (role == HOST) {
-            broadcast("CHAT|1|" + clean, null);
-        } else if (out != null) {
-            out.println("CHAT|" + clean);
-        }
-        Listener l = listener;
-        if (l != null) l.onChat(nick, clean);
+            if (l != null) l.onChat(who, text);
+        });
     }
 
     private void broadcast(String line, Peer except) {
@@ -404,6 +437,10 @@ public class RevivalSession {
         try {
             if (socket != null) socket.close();
         } catch (IOException ignored) {
+        }
+        try {
+            writer.shutdownNow();
+        } catch (Throwable ignored) {
         }
         if (current == this) current = null;
     }

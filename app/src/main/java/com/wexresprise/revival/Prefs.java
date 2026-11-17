@@ -80,4 +80,8 @@ public final class Prefs {
 
     public static boolean collisions(Context c) { return sp(c).getBoolean("collisions", false); }
     public static void setCollisions(Context c, boolean v) { sp(c).edit().putBoolean("collisions", v).apply(); }
+
+    /** 2D-режим без OpenGL: включается кнопкой или автоматически после падения 3D. */
+    public static boolean safeMode(Context c) { return sp(c).getBoolean("safe_mode", false); }
+    public static void setSafeMode(Context c, boolean v) { sp(c).edit().putBoolean("safe_mode", v).apply(); }
 }

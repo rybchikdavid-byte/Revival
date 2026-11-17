@@ -18,7 +18,6 @@ public class GLSurfaceViewBridge extends GLSurfaceView {
 
     private void init() {
         setEGLContextClientVersion(2);
-        setPreserveEGLContextOnPause(true);
         setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
     }
 }

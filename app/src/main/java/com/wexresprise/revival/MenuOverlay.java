@@ -281,6 +281,9 @@ public class MenuOverlay extends FrameLayout {
         col.addView(designRow());
         col.addView(linkRow("Load Map (.rbxlx)", "Load Map (.rbxlx)", () -> game.openPlacePicker()));
         col.addView(linkRow("Multiplayer", "Multiplayer", () -> showMultiplayer()));
+        col.addView(boolRow("3D graphics", !Prefs.safeMode(getContext()),
+                v -> game.setSafeMode(!v)));
+        col.addView(linkRow("Crash log", "Открыть", () -> game.openDiagnostics()));
 
         return scroll(col);
     }
@@ -518,12 +521,7 @@ public class MenuOverlay extends FrameLayout {
             String n = user.getText().toString().trim();
             if (n.isEmpty()) n = "Player";
             game.setNick(n);
-            try {
-                game.hostRoom();
-                redrawMultiplayer();
-            } catch (Exception e) {
-                Toast.makeText(getContext(), "Не удалось: " + e.getMessage(), Toast.LENGTH_LONG).show();
-            }
+            game.hostRoom();
         });
         LinearLayout.LayoutParams hlp = Ui.llp(ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
         hlp.topMargin = dp(8);
@@ -660,6 +658,10 @@ public class MenuOverlay extends FrameLayout {
         if (dialogLayer != null) showMultiplayer();
     }
 
+    public void onHostingStarted() {
+        if (dialogLayer != null) showMultiplayer();
+    }
+
     public void onRosterChanged() {
         if (tab == TAB_PEOPLE) rebuild();
         RevivalSession s = game.sessionOrNull();
@@ -719,6 +721,15 @@ public class MenuOverlay extends FrameLayout {
         }
 
         @Override
+        public void draw(Canvas canvas) {
+            try {
+                super.draw(canvas);
+            } catch (Throwable t) {
+                CrashLog.reportUi(getContext(), t);
+            }
+        }
+
+        @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             int n = max;
@@ -735,17 +746,21 @@ public class MenuOverlay extends FrameLayout {
 
         @Override
         public boolean onTouchEvent(android.view.MotionEvent e) {
-            if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
-                    || e.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
-                float x = e.getX();
-                float cell = getWidth() / (float) max;
-                int v = (int) (x / cell) + 1;
-                v = Math.max(1, Math.min(max, v));
-                if (v != value) {
-                    value = v;
-                    invalidate();
-                    if (listener != null) listener.on(value);
+            try {
+                if (e.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
+                        || e.getActionMasked() == android.view.MotionEvent.ACTION_MOVE) {
+                    float x = e.getX();
+                    float cell = getWidth() / (float) max;
+                    int v = (int) (x / cell) + 1;
+                    v = Math.max(1, Math.min(max, v));
+                    if (v != value) {
+                        value = v;
+                        invalidate();
+                        if (listener != null) listener.on(value);
+                    }
                 }
+            } catch (Throwable t) {
+                CrashLog.reportUi(getContext(), t);
             }
             return true;
         }

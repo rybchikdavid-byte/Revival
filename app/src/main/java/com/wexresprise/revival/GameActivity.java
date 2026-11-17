@@ -276,7 +276,7 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
         }
     }
 
-    private void openDesign() {
+    public void openDesign() {
         if (design != null) return;
         closeMenu();
         design = new DesignOverlay(this, theme, new DesignOverlay.Listener() {

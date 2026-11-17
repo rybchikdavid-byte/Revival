@@ -28,7 +28,7 @@ public final class Prefs {
     }
 
     public static int shirt(Context c) { return sp(c).getInt("shirt", 0); }
-    public static int pants(Context c) { return sp(c).getInt("pants", 0); }
+    public static int pants(Context c) { return sp(c).getInt("pants", 2); }
     public static int face(Context c) { return sp(c).getInt("face", 0); }
     public static int hair(Context c) { return sp(c).getInt("hair", 0); }
 
@@ -48,4 +48,36 @@ public final class Prefs {
         a.hair = hair(c);
         return a;
     }
+
+    // ---- настройки клиента
+
+    public static boolean shiftLock(Context c) { return sp(c).getBoolean("shift_lock", false); }
+    public static void setShiftLock(Context c, boolean v) { sp(c).edit().putBoolean("shift_lock", v).apply(); }
+
+    public static int cameraMode(Context c) { return sp(c).getInt("camera_mode", 0); }
+    public static void setCameraMode(Context c, int v) { sp(c).edit().putInt("camera_mode", v).apply(); }
+
+    public static int movementMode(Context c) { return sp(c).getInt("movement_mode", 0); }
+    public static void setMovementMode(Context c, int v) { sp(c).edit().putInt("movement_mode", v).apply(); }
+
+    public static int sensitivity(Context c) { return sp(c).getInt("sensitivity", 5); }
+    public static void setSensitivity(Context c, int v) { sp(c).edit().putInt("sensitivity", v).apply(); }
+
+    public static int volume(Context c) { return sp(c).getInt("volume", 10); }
+    public static void setVolume(Context c, int v) { sp(c).edit().putInt("volume", v).apply(); }
+
+    public static boolean fullscreen(Context c) { return sp(c).getBoolean("fullscreen", true); }
+    public static void setFullscreen(Context c, boolean v) { sp(c).edit().putBoolean("fullscreen", v).apply(); }
+
+    public static int graphicsMode(Context c) { return sp(c).getInt("graphics_mode", 0); }
+    public static void setGraphicsMode(Context c, int v) { sp(c).edit().putInt("graphics_mode", v).apply(); }
+
+    public static int graphicsQuality(Context c) { return sp(c).getInt("graphics_quality", 5); }
+    public static void setGraphicsQuality(Context c, int v) { sp(c).edit().putInt("graphics_quality", v).apply(); }
+
+    public static boolean perfStats(Context c) { return sp(c).getBoolean("perf_stats", false); }
+    public static void setPerfStats(Context c, boolean v) { sp(c).edit().putBoolean("perf_stats", v).apply(); }
+
+    public static boolean collisions(Context c) { return sp(c).getBoolean("collisions", false); }
+    public static void setCollisions(Context c, boolean v) { sp(c).edit().putBoolean("collisions", v).apply(); }
 }

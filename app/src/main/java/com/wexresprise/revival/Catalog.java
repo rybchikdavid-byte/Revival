@@ -10,10 +10,10 @@ public final class Catalog {
     public static final String[] TITLES = {"Футболки", "Штаны", "Лица", "Волосы"};
 
     public static final String[] SHIRT_NAMES = {
-            "Классика", "Полоска", "Звезда", "Ромбы", "Молния", "Клетка", "Сердце", "Пиксель"
+            "Серый", "Полоска", "Звезда", "Ромбы", "Молния", "Клетка", "Сердце", "Пиксель"
     };
     public static final int[] SHIRT_COLORS = {
-            0xFF3B6EA5, 0xFFD94A3D, 0xFF2E8B57, 0xFF6B4FA0,
+            0xFFAEB3BA, 0xFFD94A3D, 0xFF2E8B57, 0xFF6B4FA0,
             0xFFE0A72E, 0xFF30343B, 0xFFC64B8C, 0xFF4AA3A0
     };
 

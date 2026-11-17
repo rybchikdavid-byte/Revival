@@ -13,14 +13,15 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import com.wexresprise.revival.gl.WorldRenderer;
-import com.wexresprise.revival.net.RemotePlayer;
 import com.wexresprise.revival.net.RevivalSession;
 import com.wexresprise.revival.place.PlaceLoader;
 import com.wexresprise.revival.place.PlacePart;
@@ -38,10 +39,13 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
     private RevivalSession session;
     private YearTheme theme;
 
+    private FrameLayout root;
+    private MenuOverlay menu;
+    private DesignOverlay design;
+
     private LinearLayout chatLog;
     private FrameLayout chatBar;
     private EditText chatInput;
-    private TextView rosterLabel;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean running;
@@ -50,8 +54,9 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
         @Override
         public void run() {
             if (!running) return;
-            if (session != null && session.role != RevivalSession.SOLO) {
-                session.sendPosition(world.x, world.y, world.z, world.yaw);
+            RevivalSession s = session;
+            if (s != null && s.role != RevivalSession.SOLO) {
+                s.sendPosition(world.x, world.y, world.z, world.yaw);
             }
             handler.postDelayed(this, 120);
         }
@@ -60,14 +65,6 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
-
         theme = YearTheme.of(Prefs.year(this));
         session = RevivalSession.current;
         if (session == null) {
@@ -75,26 +72,28 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
         }
         session.listener = this;
 
-        world.shirt = session.avatar.shirt;
-        world.pants = session.avatar.pants;
-        world.face = session.avatar.face;
-        world.hair = session.avatar.hair;
+        world.shirt = Prefs.shirt(this);
+        world.pants = Prefs.pants(this);
+        world.face = Prefs.face(this);
+        world.hair = Prefs.hair(this);
         world.camYaw = 0f;
-        if (session.role == RevivalSession.CLIENT) {
-            world.x = 3.5f;
-            world.z = 3.5f;
-        }
 
-        setContentView(buildUi());
+        applyFullscreen(Prefs.fullscreen(this));
+        buildUi();
+        addSystemLine("Revival: чат готов. Напиши /help, если что.");
         loadPlaceFromIntent(getIntent());
     }
 
-    private View buildUi() {
-        FrameLayout root = new FrameLayout(this);
+    private int dp(float v) {
+        return Ui.dp(this, v);
+    }
+
+    private void buildUi() {
+        root = new FrameLayout(this);
 
         gl = new GLSurfaceViewBridge(this);
         renderer = new WorldRenderer(world);
-        renderer.setSky(AvatarArt.blend(theme.bg, 0xFF7FA8D8, 0.22f));
+        renderer.setSky(0xFF8FC9EE);
         gl.setRenderer(renderer);
         root.addView(gl, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
@@ -104,69 +103,75 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
         root.addView(hud, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // верхняя полоса
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
-        top.setPadding(Ui.dp(this, 12), Ui.dp(this, 8), Ui.dp(this, 12), Ui.dp(this, 8));
+        // верхние кнопки
+        LinearLayout leftTop = new LinearLayout(this);
+        leftTop.setOrientation(LinearLayout.HORIZONTAL);
+        leftTop.addView(iconButton(IconView.Kind.BRICK, () -> openCatalog()));
+        LinearLayout.LayoutParams gap = Ui.llp(dp(8), dp(1));
+        leftTop.addView(new View(this), gap);
+        leftTop.addView(iconButton(IconView.Kind.CHAT, this::focusChat));
 
-        TextView tag = Ui.label(this, "REVIVAL", 13, 0xFFFFFFFF, true);
-        tag.setShadowLayer(Ui.dp(this, 3), 0, 1, 0xAA000000);
-        top.addView(tag);
-
-        rosterLabel = Ui.label(this, "", 12, 0xCCFFFFFF, false);
-        LinearLayout.LayoutParams rlp = Ui.llp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        rlp.leftMargin = Ui.dp(this, 12);
-        rosterLabel.setLayoutParams(rlp);
-        rosterLabel.setShadowLayer(Ui.dp(this, 3), 0, 1, 0xAA000000);
-        rosterLabel.setText(infoLine());
-        top.addView(rosterLabel);
-
-        TextView exit = Ui.label(this, "✕", 18, 0xFFFFFFFF, true);
-        exit.setGravity(Gravity.CENTER);
-        exit.setBackground(Ui.round(0x66000000, Ui.dp(this, 18), 0x55FFFFFF, Ui.dp(this, 1)));
-        exit.setPadding(Ui.dp(this, 12), Ui.dp(this, 2), Ui.dp(this, 12), Ui.dp(this, 4));
-        exit.setOnClickListener(v -> finish());
-        top.addView(exit);
-
-        root.addView(top, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
-
-        // кнопки справа снизу
-        LinearLayout right = new LinearLayout(this);
-        right.setOrientation(LinearLayout.VERTICAL);
-        right.setGravity(Gravity.END);
-
-        TextView chatBtn = pill("ЧАТ", 0xCC11131A, 0xFFFFFFFF);
-        chatBtn.setOnClickListener(v -> toggleChat());
-        right.addView(chatBtn);
-
-        TextView jumpBtn = pill("↑", 0xCC11131A, 0xFFFFFFFF);
-        jumpBtn.setOnClickListener(v -> world.jumpRequested = true);
-        LinearLayout.LayoutParams jlp = Ui.llp(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT);
-        jlp.topMargin = Ui.dp(this, 10);
-        jumpBtn.setLayoutParams(jlp);
-        right.addView(jumpBtn);
-
-        FrameLayout.LayoutParams rp = new FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams leftLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM | Gravity.END);
-        rp.setMargins(0, 0, Ui.dp(this, 18), Ui.dp(this, 18));
-        root.addView(right, rp);
+                Gravity.TOP | Gravity.START);
+        leftLp.setMargins(dp(12), dp(12), 0, 0);
+        root.addView(leftTop, leftLp);
 
-        // лог чата
+        LinearLayout rightTop = new LinearLayout(this);
+        rightTop.setOrientation(LinearLayout.HORIZONTAL);
+        rightTop.addView(iconButton(IconView.Kind.PALETTE, this::openDesign));
+        LinearLayout.LayoutParams gap2 = Ui.llp(dp(8), dp(1));
+        rightTop.addView(new View(this), gap2);
+        rightTop.addView(iconButton(IconView.Kind.MORE, this::openMenu));
+
+        FrameLayout.LayoutParams rightLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.END);
+        rightLp.setMargins(0, dp(12), dp(12), 0);
+        root.addView(rightTop, rightLp);
+
+        buildChat();
+        setContentView(root);
+    }
+
+    private View iconButton(IconView.Kind kind, Runnable action) {
+        FrameLayout b = new FrameLayout(this);
+        b.setBackground(Ui.round(0xB33B424E, dp(14), 0x33FFFFFF, dp(1)));
+        b.setClickable(true);
+        IconView icon = new IconView(this);
+        icon.setKind(kind);
+        icon.setIconColor(Color.WHITE);
+        b.addView(icon, new FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER));
+        b.setOnClickListener(v -> action.run());
+        b.setLayoutParams(Ui.llp(dp(56), dp(56)));
+        return b;
+    }
+
+    private void buildChat() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackground(Ui.round(0x4D000000, dp(4), 0, 0));
+
         chatLog = new LinearLayout(this);
         chatLog.setOrientation(LinearLayout.VERTICAL);
-        FrameLayout.LayoutParams llp = new FrameLayout.LayoutParams(
-                Ui.dp(this, 300), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
-        llp.setMargins(Ui.dp(this, 12), Ui.dp(this, 48), 0, 0);
-        root.addView(chatLog, llp);
+        chatLog.setPadding(dp(10), dp(8), dp(10), dp(6));
+        panel.addView(chatLog, Ui.llp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView hint = Ui.label(this, "To chat click here", 14, 0xFFE7EBF0, true);
+        hint.setPadding(dp(10), dp(8), dp(10), dp(8));
+        hint.setBackground(Ui.round(0xCC8B98A8, dp(2), 0, 0));
+        hint.setOnClickListener(v -> focusChat());
+        panel.addView(hint, Ui.llp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                dp(340), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.START);
+        lp.setMargins(dp(12), dp(80), 0, 0);
+        root.addView(panel, lp);
 
         // полоса ввода
         chatBar = new FrameLayout(this);
-        chatBar.setBackgroundColor(0xE6101218);
-        chatBar.setPadding(Ui.dp(this, 10), Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 6));
+        chatBar.setBackgroundColor(0xD910131A);
+        chatBar.setPadding(dp(10), dp(6), dp(10), dp(6));
         chatBar.setVisibility(View.GONE);
 
         LinearLayout bar = new LinearLayout(this);
@@ -176,26 +181,26 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
         chatInput = new EditText(this);
         chatInput.setHint("Сообщение");
         chatInput.setTextColor(Color.WHITE);
-        chatInput.setHintTextColor(0xFF7A8798);
+        chatInput.setHintTextColor(0xFF8A93A0);
         chatInput.setTextSize(15);
         chatInput.setSingleLine(true);
         chatInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
         chatInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        chatInput.setBackground(Ui.round(0xFF1B1F27, Ui.dp(this, 8), 0xFF2E3642, Ui.dp(this, 1)));
-        chatInput.setPadding(Ui.dp(this, 12), Ui.dp(this, 6), Ui.dp(this, 12), Ui.dp(this, 6));
+        chatInput.setBackground(Ui.round(0xFF1B1F27, dp(8), 0xFF2E3642, dp(1)));
+        chatInput.setPadding(dp(12), dp(6), dp(12), dp(6));
         chatInput.setOnEditorActionListener((v, actionId, event) -> {
             sendChat();
             return true;
         });
-        bar.addView(chatInput, Ui.llp(0, Ui.dp(this, 44), 1f));
+        bar.addView(chatInput, Ui.llp(0, dp(44), 1f));
 
         TextView send = Ui.label(this, "➤", 18, Color.WHITE, true);
         send.setGravity(Gravity.CENTER);
-        send.setBackground(Ui.round(theme.accent, Ui.dp(this, 8), 0, 0));
-        send.setPadding(Ui.dp(this, 16), Ui.dp(this, 8), Ui.dp(this, 16), Ui.dp(this, 8));
+        send.setBackground(Ui.round(0xFF1E9BFF, dp(8), 0, 0));
+        send.setPadding(dp(16), dp(8), dp(16), dp(8));
         send.setOnClickListener(v -> sendChat());
-        LinearLayout.LayoutParams slp = Ui.llp(ViewGroup.LayoutParams.WRAP_CONTENT, Ui.dp(this, 44));
-        slp.leftMargin = Ui.dp(this, 8);
+        LinearLayout.LayoutParams slp = Ui.llp(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44));
+        slp.leftMargin = dp(8);
         send.setLayoutParams(slp);
         bar.addView(send);
 
@@ -203,67 +208,139 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER_VERTICAL));
 
-        root.addView(chatBar, new FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM));
-
-        return root;
+                Gravity.BOTTOM);
+        blp.setMargins(dp(210), 0, dp(210), dp(10));
+        root.addView(chatBar, blp);
     }
 
-    private TextView pill(String text, int bg, int fg) {
-        TextView t = Ui.label(this, text, 14, fg, true);
-        t.setGravity(Gravity.CENTER);
-        t.setPadding(Ui.dp(this, 16), Ui.dp(this, 10), Ui.dp(this, 16), Ui.dp(this, 10));
-        t.setBackground(Ui.round(bg, Ui.dp(this, 22), 0x55FFFFFF, Ui.dp(this, 1)));
-        return t;
-    }
-
-    private String infoLine() {
-        if (session.role == RevivalSession.SOLO) return "одиночная игра";
-        int n = session.players.size() + 1;
-        String where = session.role == RevivalSession.HOST ? "хост" : "игрок";
-        return where + " · " + session.nick + " · " + n + " в мире";
-    }
-
-    private void toggleChat() {
-        boolean show = chatBar.getVisibility() != View.VISIBLE;
-        chatBar.setVisibility(show ? View.VISIBLE : View.GONE);
-        if (show) {
-            chatInput.requestFocus();
-            android.view.inputmethod.InputMethodManager im = (android.view.inputmethod.InputMethodManager)
-                    getSystemService(INPUT_METHOD_SERVICE);
-            if (im != null) im.showSoftInput(chatInput, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
-        } else {
-            android.view.inputmethod.InputMethodManager im = (android.view.inputmethod.InputMethodManager)
-                    getSystemService(INPUT_METHOD_SERVICE);
-            if (im != null) im.hideSoftInputFromWindow(chatInput.getWindowToken(), 0);
-        }
+    private void focusChat() {
+        chatBar.setVisibility(View.VISIBLE);
+        chatInput.requestFocus();
+        InputMethodManager im = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (im != null) im.showSoftInput(chatInput, InputMethodManager.SHOW_IMPLICIT);
     }
 
     private void sendChat() {
         String text = chatInput.getText().toString().trim();
         if (text.isEmpty()) return;
-        session.sendChat(text);
         chatInput.setText("");
+        if (text.equals("/help") || text.equals("/?")) {
+            addSystemLine("Команды: /help — помощь, /clear — очистить чат, /reset — вернуться на спавн.");
+            return;
+        }
+        if (text.equals("/clear")) {
+            chatLog.removeAllViews();
+            return;
+        }
+        if (text.equals("/reset")) {
+            resetCharacter();
+            return;
+        }
+        session.sendChat(text);
+        handler.postDelayed(() -> chatBar.setVisibility(View.GONE), 1800);
     }
 
     private void addChatLine(String nick, String text) {
         if (chatLog == null) return;
-        TextView line = Ui.label(this, nick + ": " + text, 12, 0xFFFFFFFF, false);
-        line.setPadding(Ui.dp(this, 8), Ui.dp(this, 4), Ui.dp(this, 8), Ui.dp(this, 4));
-        line.setBackground(Ui.round(0x66000000, Ui.dp(this, 6), 0, 0));
-        line.setShadowLayer(Ui.dp(this, 2), 0, 1, 0xAA000000);
+        TextView line = Ui.label(this, "[" + nick + "] " + text, 14, Color.WHITE, false);
+        line.setPadding(0, dp(2), 0, dp(2));
+        line.setShadowLayer(dp(2), 0, 1, 0xAA000000);
         chatLog.addView(line);
-        while (chatLog.getChildCount() > 5) {
-            chatLog.removeViewAt(0);
+        while (chatLog.getChildCount() > 7) chatLog.removeViewAt(0);
+    }
+
+    private void addSystemLine(String text) {
+        if (chatLog == null) return;
+        TextView line = Ui.label(this, text, 13, 0xFFCFE6FF, false);
+        line.setPadding(0, dp(2), 0, dp(2));
+        line.setShadowLayer(dp(2), 0, 1, 0xAA000000);
+        chatLog.addView(line);
+        while (chatLog.getChildCount() > 7) chatLog.removeViewAt(0);
+    }
+
+    // -------------------------------------------------------------- меню
+
+    private void openMenu() {
+        if (menu != null) return;
+        menu = new MenuOverlay(this, theme);
+        root.addView(menu, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    public void closeMenu() {
+        if (menu != null) {
+            root.removeView(menu);
+            menu = null;
         }
+    }
+
+    private void openDesign() {
+        if (design != null) return;
+        closeMenu();
+        design = new DesignOverlay(this, theme, new DesignOverlay.Listener() {
+            @Override
+            public void onYear(int year) {
+                Prefs.setYear(GameActivity.this, year);
+                theme = YearTheme.of(year);
+                closeDesign();
+                rebuildChrome();
+                addSystemLine("Стиль: " + year + " · " + theme.label);
+            }
+
+            @Override
+            public void onClose() {
+                closeDesign();
+            }
+        });
+        root.addView(design, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void closeDesign() {
+        if (design != null) {
+            root.removeView(design);
+            design = null;
+        }
+    }
+
+    private void rebuildChrome() {
+        closeMenu();
+        closeDesign();
+        buildUi();
+    }
+
+    public void openCatalog() {
+        startActivity(new Intent(this, CatalogActivity.class));
+    }
+
+    public void openPlacePicker() {
+        closeMenu();
+        try {
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            startActivityForResult(i, 41);
+        } catch (Exception e) {
+            Toast.makeText(this, "Нет файлового менеджера", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != 41 || resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        loadPlace(data.getData());
     }
 
     private void loadPlaceFromIntent(Intent intent) {
         if (intent == null) return;
         String uriString = intent.getStringExtra(EXTRA_PLACE_URI);
-        if (uriString == null) return;
-        final Uri uri = Uri.parse(uriString);
+        if (uriString != null) loadPlace(Uri.parse(uriString));
+    }
+
+    private void loadPlace(final Uri uri) {
         new Thread(() -> {
             try (InputStream in = getContentResolver().openInputStream(uri)) {
                 if (in == null) throw new Exception("Файл не открылся");
@@ -271,25 +348,96 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
                 world.parts.clear();
                 world.parts.addAll(parts);
                 runOnUiThread(() -> {
-                    Toast.makeText(this, "Место загружено: " + parts.size() + " деталей",
+                    Toast.makeText(this, "Карта загружена: " + parts.size() + " деталей",
                             Toast.LENGTH_LONG).show();
-                    if (rosterLabel != null) rosterLabel.setText(infoLine());
+                    addSystemLine("Карта: " + parts.size() + " деталей");
                 });
+            } catch (org.xmlpull.v1.XmlPullParserException e) {
+                runOnUiThread(() -> Toast.makeText(this,
+                        "Это .rbxl (двоичный). Нужен .rbxlx", Toast.LENGTH_LONG).show());
             } catch (Exception e) {
-                final String msg = (e instanceof org.xmlpull.v1.XmlPullParserException)
-                        || (e instanceof java.io.IOException && !(e instanceof java.io.FileNotFoundException))
-                        ? "Это .rbxl (двоичный). Нужен .rbxlx — XML-версия места"
-                        : "Не удалось прочитать место: " + e.getClass().getSimpleName();
-                runOnUiThread(() -> Toast.makeText(this, msg, Toast.LENGTH_LONG).show());
+                runOnUiThread(() -> Toast.makeText(this,
+                        "Не удалось прочитать карту", Toast.LENGTH_LONG).show());
             }
         }, "revival-place").start();
     }
+
+    // -------------------------------------------------- действия из меню
+
+    public RevivalSession sessionOrNull() {
+        return session;
+    }
+
+    public String nick() {
+        return Prefs.nick(this);
+    }
+
+    public void setNick(String nick) {
+        Prefs.setNick(this, nick);
+    }
+
+    public void hostRoom() throws Exception {
+        if (session != null && session.role != RevivalSession.SOLO) return;
+        if (session != null) session.close();
+        session = RevivalSession.host(Prefs.nick(this), Prefs.avatar(this));
+        session.listener = this;
+        addSystemLine("Ты хост. Код: " + session.code);
+    }
+
+    public void joinRoom(String code) throws Exception {
+        if (session != null && session.role != RevivalSession.SOLO) session.close();
+        session = RevivalSession.join(code, Prefs.nick(this), Prefs.avatar(this));
+        session.listener = this;
+        addSystemLine("Подключаемся к " + code + "…");
+    }
+
+    public void leaveRoom() {
+        if (session != null) session.close();
+        session = RevivalSession.solo(Prefs.nick(this), Prefs.avatar(this));
+        session.listener = this;
+        addSystemLine("Ты вышел из комнаты.");
+    }
+
+    public void resetCharacter() {
+        world.x = 0;
+        world.y = 0;
+        world.z = 0;
+        world.camYaw = 0;
+        addSystemLine("Персонаж сброшен.");
+    }
+
+    public void leaveGame() {
+        finish();
+    }
+
+    public void applyFullscreen(boolean on) {
+        if (on) {
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            getWindow().getDecorView().setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        } else {
+            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        }
+    }
+
+    // ---------------------------------------------------------- жизненный цикл
 
     @Override
     protected void onResume() {
         super.onResume();
         running = true;
         if (gl != null) gl.onResume();
+        world.shirt = Prefs.shirt(this);
+        world.pants = Prefs.pants(this);
+        world.face = Prefs.face(this);
+        world.hair = Prefs.hair(this);
+        if (session != null && session.role == RevivalSession.SOLO) {
+            session.avatar = Prefs.avatar(this);
+        }
         handler.removeCallbacks(positionLoop);
         handler.postDelayed(positionLoop, 120);
     }
@@ -306,16 +454,27 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
     protected void onDestroy() {
         if (session != null) {
             session.listener = null;
-            if (session.role != RevivalSession.SOLO) session.close();
+            session.close();
         }
         super.onDestroy();
     }
 
-    // ------------------------------------------------------------- callback
+    @Override
+    public void onBackPressed() {
+        if (menu != null) {
+            closeMenu();
+        } else if (design != null) {
+            closeDesign();
+        } else {
+            openMenu();
+        }
+    }
+
+    // ------------------------------------------------------------- сетевое
 
     @Override
     public void onRoster() {
-        if (rosterLabel != null) rosterLabel.setText(infoLine());
+        if (menu != null) menu.onRosterChanged();
     }
 
     @Override
@@ -325,8 +484,8 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
 
     @Override
     public void onError(String message) {
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-        addChatLine("система", message);
+        addSystemLine("! " + message);
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show();
     }
 
     @Override

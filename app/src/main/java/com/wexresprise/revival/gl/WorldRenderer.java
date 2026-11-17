@@ -1,7 +1,11 @@
 package com.wexresprise.revival.gl;
 
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
+import android.opengl.GLUtils;
 import android.opengl.Matrix;
 
 import com.wexresprise.revival.Catalog;
@@ -24,29 +28,43 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
             "uniform mat4 uMvp;\n" +
                     "attribute vec3 aPos;\n" +
                     "attribute vec3 aNormal;\n" +
+                    "attribute vec2 aUv;\n" +
                     "varying float vShade;\n" +
+                    "varying vec2 vUv;\n" +
                     "void main() {\n" +
                     "  gl_Position = uMvp * vec4(aPos, 1.0);\n" +
                     "  vec3 n = normalize(aNormal);\n" +
                     "  float d = max(dot(n, normalize(vec3(0.42, 0.86, 0.31))), 0.0);\n" +
-                    "  vShade = 0.55 + 0.45 * d;\n" +
+                    "  vShade = 0.62 + 0.38 * d;\n" +
+                    "  vUv = aUv;\n" +
                     "}";
 
     private static final String FS =
             "precision mediump float;\n" +
                     "uniform vec3 uColor;\n" +
+                    "uniform sampler2D uTex;\n" +
+                    "uniform float uUseTex;\n" +
+                    "uniform float uUvScale;\n" +
                     "varying float vShade;\n" +
+                    "varying vec2 vUv;\n" +
                     "void main() {\n" +
-                    "  gl_FragColor = vec4(uColor * vShade, 1.0);\n" +
+                    "  vec4 t = texture2D(uTex, vUv * uUvScale);\n" +
+                    "  vec3 base = mix(uColor, t.rgb, uUseTex);\n" +
+                    "  gl_FragColor = vec4(base * vShade, 1.0);\n" +
                     "}";
 
     private final World world;
     private int program;
     private int aPos;
     private int aNormal;
+    private int aUv;
     private int uMvp;
     private int uColor;
+    private int uUseTex;
+    private int uUvScale;
+    private int uTex;
     private FloatBuffer cube;
+    private int studTex;
 
     private final float[] proj = new float[16];
     private final float[] view = new float[16];
@@ -62,9 +80,9 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
     private double walkPhase;
     private float vy;
 
-    private float skyR = 0.10f;
-    private float skyG = 0.13f;
-    private float skyB = 0.18f;
+    private float skyR = 0.53f;
+    private float skyG = 0.78f;
+    private float skyB = 0.93f;
 
     public WorldRenderer(World world) {
         this.world = world;
@@ -83,6 +101,7 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         GLES20.glClearColor(skyR, skyG, skyB, 1f);
         buildCube();
         buildProgram();
+        buildStudTexture();
     }
 
     @Override
@@ -168,29 +187,30 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
     }
 
     private void drawGround() {
-        float tile = 64f;
-        for (int ix = -4; ix < 4; ix++) {
-            for (int iz = -4; iz < 4; iz++) {
-                boolean even = ((ix + iz) & 1) == 0;
-                int color = even ? 0xFFD9DEE7 : 0xFFB6BEC9;
-                drawBox(ix * tile + tile / 2f, -0.5f, iz * tile + tile / 2f, tile, 1f, tile, 0f, color);
-            }
-        }
+        // плита со студами — одна текстура, повторяется
+        drawBoxT(0, -0.5f, 0, 512f, 1f, 512f, 0f, 0xFFFFFFFF, true, 64f);
 
         drawBox(0, 0.02f, 0, 15f, 0.08f, 15f, 0f, 0xFF00A2FF);
-        drawBox(0, 0.04f, 0, 11f, 0.08f, 11f, 0f, 0xFF1B1F27);
+        drawBox(0, 0.04f, 0, 11f, 0.08f, 11f, 0f, 0xFF8A929E);
+
+        // тестовая сцена
+        drawBox(-14, 1.5f, 4, 6f, 3f, 6f, 0f, 0xFFE8C21A);
+        for (int i = 0; i < 4; i++) {
+            drawBox(-2 + i * 2f, 0.35f + i * 0.7f, 8, 2f, 0.7f + i * 1.4f, 4f, 0f, 0xFF4CA64C);
+        }
+        for (int i = 0; i < 12; i++) {
+            drawBox(6, 0.5f + i, 10, 2f, 1f, 2f, 0f, (i & 1) == 0 ? 0xFFF2F2F2 : 0xFF1C1C1C);
+        }
+        drawBox(-6, 1.2f, 12, 10f, 0.6f, 3f, 0f, 0xFF0B5FA5);
+        drawBox(24, 3f, 2, 1.5f, 6f, 12f, 0f, 0xFF9A9DA2);
+        drawBox(-26, 1f, -14, 8f, 2f, 8f, 0f, 0xFFC4553A);
+        drawBox(18, 0.6f, -18, 12f, 1.2f, 12f, 0f, 0xFF6E7A88);
 
         int wall = 0xFF3B4250;
         drawBox(0, 1f, 255f, 512f, 2f, 3f, 0f, wall);
         drawBox(0, 1f, -255f, 512f, 2f, 3f, 0f, wall);
         drawBox(255f, 1f, 0, 3f, 2f, 512f, 0f, wall);
         drawBox(-255f, 1f, 0, 3f, 2f, 512f, 0f, wall);
-
-        drawBox(18, 2, 14, 6, 4, 6, 0f, 0xFF7C5CFF);
-        drawBox(-22, 3, 18, 8, 6, 8, 0f, 0xFF00C896);
-        drawBox(-16, 1.5f, -26, 10, 3, 6, 0f, 0xFFE0A72E);
-        drawBox(26, 4, -20, 7, 8, 7, 0f, 0xFFC64B8C);
-        drawBox(0, 1, -40, 26, 2, 6, 0f, 0xFF30343B);
     }
 
     private void drawParts() {
@@ -220,15 +240,11 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         float bob = (float) Math.abs(Math.sin(phase)) * 0.10f;
         float swing = (float) Math.sin(phase) * 0.28f;
 
-        // ноги
         local(x, y, z, yawDeg, -0.5f, 1f, swing, 1f, 2f, 1f, pants);
         local(x, y, z, yawDeg, 0.5f, 1f, -swing, 1f, 2f, 1f, pants);
-        // торс
         local(x, y, z, yawDeg, 0f, 2f + bob, 0f, 2f, 2f, 1f, shirt);
-        // руки
         local(x, y, z, yawDeg, -1.5f, 2f + bob, -swing * 0.6f, 1f, 2f, 1f, shirt);
         local(x, y, z, yawDeg, 1.5f, 2f + bob, swing * 0.6f, 1f, 2f, 1f, shirt);
-        // голова
         local(x, y, z, yawDeg, 0f, 3.65f + bob, 0f, 1.3f, 1.3f, 1.3f, skin);
 
         drawBox(x, 0.02f, z, 2.8f, 0.04f, 2.8f, 0f, 0x60000000);
@@ -246,6 +262,11 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
     }
 
     private void drawBox(float x, float y, float z, float sx, float sy, float sz, float yaw, int color) {
+        drawBoxT(x, y, z, sx, sy, sz, yaw, color, false, 1f);
+    }
+
+    private void drawBoxT(float x, float y, float z, float sx, float sy, float sz, float yaw,
+                          int color, boolean textured, float uvScale) {
         Matrix.setIdentityM(model, 0);
         Matrix.translateM(model, 0, x, y, z);
         if (yaw != 0) Matrix.rotateM(model, 0, yaw, 0, 1, 0);
@@ -256,6 +277,8 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         GLES20.glUniformMatrix4fv(uMvp, 1, false, mvp, 0);
         GLES20.glUniform3f(uColor, ((color >> 16) & 0xFF) / 255f,
                 ((color >> 8) & 0xFF) / 255f, (color & 0xFF) / 255f);
+        GLES20.glUniform1f(uUseTex, textured ? 1f : 0f);
+        GLES20.glUniform1f(uUvScale, uvScale);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 36);
     }
 
@@ -280,16 +303,26 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         GLES20.glLinkProgram(program);
         aPos = GLES20.glGetAttribLocation(program, "aPos");
         aNormal = GLES20.glGetAttribLocation(program, "aNormal");
+        aUv = GLES20.glGetAttribLocation(program, "aUv");
         uMvp = GLES20.glGetUniformLocation(program, "uMvp");
         uColor = GLES20.glGetUniformLocation(program, "uColor");
+        uUseTex = GLES20.glGetUniformLocation(program, "uUseTex");
+        uUvScale = GLES20.glGetUniformLocation(program, "uUvScale");
+        uTex = GLES20.glGetUniformLocation(program, "uTex");
 
         cube.position(0);
         GLES20.glEnableVertexAttribArray(aPos);
-        GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, 24, cube);
+        GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, 32, cube);
         cube.position(3);
         GLES20.glEnableVertexAttribArray(aNormal);
-        GLES20.glVertexAttribPointer(aNormal, 3, GLES20.GL_FLOAT, false, 24, cube);
+        GLES20.glVertexAttribPointer(aNormal, 3, GLES20.GL_FLOAT, false, 32, cube);
+        cube.position(6);
+        GLES20.glEnableVertexAttribArray(aUv);
+        GLES20.glVertexAttribPointer(aUv, 2, GLES20.GL_FLOAT, false, 32, cube);
         cube.position(0);
+
+        GLES20.glUseProgram(program);
+        GLES20.glUniform1i(uTex, 0);
     }
 
     private int compile(int type, String src) {
@@ -299,49 +332,84 @@ public class WorldRenderer implements GLSurfaceView.Renderer {
         return sh;
     }
 
+    private void buildStudTexture() {
+        int size = 128;
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        c.drawColor(0xFFC3C7CD);
+        Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        float cell = size / 8f;
+        for (int y = 0; y < 8; y++) {
+            for (int x = 0; x < 8; x++) {
+                float cx = x * cell + cell / 2f;
+                float cy = y * cell + cell / 2f;
+                p.setColor(0xFFB0B4BA);
+                c.drawCircle(cx, cy + 1.4f, cell * 0.36f, p);
+                p.setColor(0xFFD2D6DC);
+                c.drawCircle(cx, cy, cell * 0.36f, p);
+                p.setColor(0xFFE0E4EA);
+                c.drawCircle(cx - cell * 0.07f, cy - cell * 0.07f, cell * 0.20f, p);
+            }
+        }
+        studTex = createTexture(bmp);
+        bmp.recycle();
+    }
+
+    private int createTexture(Bitmap bmp) {
+        int[] ids = new int[1];
+        GLES20.glGenTextures(1, ids, 0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, ids[0]);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_REPEAT);
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0);
+        return ids[0];
+    }
+
     private void buildCube() {
         float[] v = {
-                0.5f, -0.5f, -0.5f, 1, 0, 0,
-                0.5f, -0.5f, 0.5f, 1, 0, 0,
-                0.5f, 0.5f, 0.5f, 1, 0, 0,
-                0.5f, -0.5f, -0.5f, 1, 0, 0,
-                0.5f, 0.5f, 0.5f, 1, 0, 0,
-                0.5f, 0.5f, -0.5f, 1, 0, 0,
+                0.5f, -0.5f, -0.5f, 1, 0, 0, 0, 0,
+                0.5f, -0.5f, 0.5f, 1, 0, 0, 1, 0,
+                0.5f, 0.5f, 0.5f, 1, 0, 0, 1, 1,
+                0.5f, -0.5f, -0.5f, 1, 0, 0, 0, 0,
+                0.5f, 0.5f, 0.5f, 1, 0, 0, 1, 1,
+                0.5f, 0.5f, -0.5f, 1, 0, 0, 0, 1,
 
-                -0.5f, -0.5f, 0.5f, -1, 0, 0,
-                -0.5f, -0.5f, -0.5f, -1, 0, 0,
-                -0.5f, 0.5f, -0.5f, -1, 0, 0,
-                -0.5f, -0.5f, 0.5f, -1, 0, 0,
-                -0.5f, 0.5f, -0.5f, -1, 0, 0,
-                -0.5f, 0.5f, 0.5f, -1, 0, 0,
+                -0.5f, -0.5f, 0.5f, -1, 0, 0, 0, 0,
+                -0.5f, -0.5f, -0.5f, -1, 0, 0, 1, 0,
+                -0.5f, 0.5f, -0.5f, -1, 0, 0, 1, 1,
+                -0.5f, -0.5f, 0.5f, -1, 0, 0, 0, 0,
+                -0.5f, 0.5f, -0.5f, -1, 0, 0, 1, 1,
+                -0.5f, 0.5f, 0.5f, -1, 0, 0, 0, 1,
 
-                -0.5f, 0.5f, 0.5f, 0, 1, 0,
-                0.5f, 0.5f, 0.5f, 0, 1, 0,
-                0.5f, 0.5f, -0.5f, 0, 1, 0,
-                -0.5f, 0.5f, 0.5f, 0, 1, 0,
-                0.5f, 0.5f, -0.5f, 0, 1, 0,
-                -0.5f, 0.5f, -0.5f, 0, 1, 0,
+                -0.5f, 0.5f, 0.5f, 0, 1, 0, 0, 0,
+                0.5f, 0.5f, 0.5f, 0, 1, 0, 1, 0,
+                0.5f, 0.5f, -0.5f, 0, 1, 0, 1, 1,
+                -0.5f, 0.5f, 0.5f, 0, 1, 0, 0, 0,
+                0.5f, 0.5f, -0.5f, 0, 1, 0, 1, 1,
+                -0.5f, 0.5f, -0.5f, 0, 1, 0, 0, 1,
 
-                -0.5f, -0.5f, -0.5f, 0, -1, 0,
-                0.5f, -0.5f, -0.5f, 0, -1, 0,
-                0.5f, -0.5f, 0.5f, 0, -1, 0,
-                -0.5f, -0.5f, -0.5f, 0, -1, 0,
-                0.5f, -0.5f, 0.5f, 0, -1, 0,
-                -0.5f, -0.5f, 0.5f, 0, -1, 0,
+                -0.5f, -0.5f, -0.5f, 0, -1, 0, 0, 0,
+                0.5f, -0.5f, -0.5f, 0, -1, 0, 1, 0,
+                0.5f, -0.5f, 0.5f, 0, -1, 0, 1, 1,
+                -0.5f, -0.5f, -0.5f, 0, -1, 0, 0, 0,
+                0.5f, -0.5f, 0.5f, 0, -1, 0, 1, 1,
+                -0.5f, -0.5f, 0.5f, 0, -1, 0, 0, 1,
 
-                -0.5f, -0.5f, 0.5f, 0, 0, 1,
-                0.5f, -0.5f, 0.5f, 0, 0, 1,
-                0.5f, 0.5f, 0.5f, 0, 0, 1,
-                -0.5f, -0.5f, 0.5f, 0, 0, 1,
-                0.5f, 0.5f, 0.5f, 0, 0, 1,
-                -0.5f, 0.5f, 0.5f, 0, 0, 1,
+                -0.5f, -0.5f, 0.5f, 0, 0, 1, 0, 0,
+                0.5f, -0.5f, 0.5f, 0, 0, 1, 1, 0,
+                0.5f, 0.5f, 0.5f, 0, 0, 1, 1, 1,
+                -0.5f, -0.5f, 0.5f, 0, 0, 1, 0, 0,
+                0.5f, 0.5f, 0.5f, 0, 0, 1, 1, 1,
+                -0.5f, 0.5f, 0.5f, 0, 0, 1, 0, 1,
 
-                0.5f, -0.5f, -0.5f, 0, 0, -1,
-                -0.5f, -0.5f, -0.5f, 0, 0, -1,
-                -0.5f, 0.5f, -0.5f, 0, 0, -1,
-                0.5f, -0.5f, -0.5f, 0, 0, -1,
-                -0.5f, 0.5f, -0.5f, 0, 0, -1,
-                0.5f, 0.5f, -0.5f, 0, 0, -1
+                0.5f, -0.5f, -0.5f, 0, 0, -1, 0, 0,
+                -0.5f, -0.5f, -0.5f, 0, 0, -1, 1, 0,
+                -0.5f, 0.5f, -0.5f, 0, 0, -1, 1, 1,
+                0.5f, -0.5f, -0.5f, 0, 0, -1, 0, 0,
+                -0.5f, 0.5f, -0.5f, 0, 0, -1, 1, 1,
+                0.5f, 0.5f, -0.5f, 0, 0, -1, 0, 1
         };
         ByteBuffer bb = ByteBuffer.allocateDirect(v.length * 4);
         bb.order(ByteOrder.nativeOrder());

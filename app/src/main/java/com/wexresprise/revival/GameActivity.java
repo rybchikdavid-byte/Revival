@@ -276,9 +276,11 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
                     if (rosterLabel != null) rosterLabel.setText(infoLine());
                 });
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this,
-                        "Не удалось прочитать .rbxlx: " + e.getClass().getSimpleName(),
-                        Toast.LENGTH_LONG).show());
+                final String msg = (e instanceof org.xmlpull.v1.XmlPullParserException)
+                        || (e instanceof java.io.IOException && !(e instanceof java.io.FileNotFoundException))
+                        ? "Это .rbxl (двоичный). Нужен .rbxlx — XML-версия места"
+                        : "Не удалось прочитать место: " + e.getClass().getSimpleName();
+                runOnUiThread(() -> Toast.makeText(this, msg, Toast.LENGTH_LONG).show());
             }
         }, "revival-place").start();
     }

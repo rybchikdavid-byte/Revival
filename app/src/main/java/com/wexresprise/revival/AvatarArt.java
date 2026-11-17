@@ -67,6 +67,7 @@ public final class AvatarArt {
 
         drawFace(c, head, a.face, u);
         drawHair(c, head, a.hair, u);
+        drawFace(c, head, a.face, u);
     }
 
     /** Крупный портрет: голова, лицо и волосы. */
@@ -81,6 +82,7 @@ public final class AvatarArt {
         c.drawRect(head.right - 0.16f * u, head.top + 0.08f * u, head.right - 0.05f * u, head.bottom - 0.06f * u, p);
         drawFace(c, head, a.face, u);
         drawHair(c, head, a.hair, u);
+        drawFace(c, head, a.face, u);
     }
 
     /** Плоская иконка предмета одежды. */

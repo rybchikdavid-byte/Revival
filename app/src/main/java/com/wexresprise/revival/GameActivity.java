@@ -669,6 +669,7 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
         try {
             String stack = Log.getStackTraceString(error);
             if (stack.length() > 9000) stack = stack.substring(0, 9000) + "\n…";
+            final String stackText = stack;
 
             ScrollView scroll = new ScrollView(this);
             scroll.setBackgroundColor(0xFF12141A);
@@ -692,7 +693,7 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
             col.addView(hint);
 
             TextView logView = new TextView(this);
-            logView.setText(stack);
+            logView.setText(stackText);
             logView.setTextColor(0xFFD6DCE4);
             logView.setTextSize(10.5f);
             logView.setTypeface(Typeface.MONOSPACE);
@@ -712,12 +713,12 @@ public class GameActivity extends Activity implements RevivalSession.Listener, H
             row.addView(emergencyButton("Отправить", () -> {
                 Intent send = new Intent(Intent.ACTION_SEND);
                 send.setType("text/plain");
-                send.putExtra(Intent.EXTRA_TEXT, "Revival error:\n" + stack);
+                send.putExtra(Intent.EXTRA_TEXT, "Revival error:\n" + stackText);
                 startActivity(Intent.createChooser(send, "Отправить лог"));
             }), emergencyLp());
 
             row.addView(emergencyButton("В Downloads", () -> {
-                String where = CrashLog.writeDownload(this, "Revival-log.txt", stack);
+                String where = CrashLog.writeDownload(this, "Revival-log.txt", stackText);
                 Toast.makeText(this, where == null ? "Не удалось" : "Сохранено: " + where,
                         Toast.LENGTH_LONG).show();
             }), emergencyLp());

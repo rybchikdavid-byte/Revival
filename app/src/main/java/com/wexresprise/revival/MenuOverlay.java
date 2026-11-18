@@ -46,6 +46,25 @@ public class MenuOverlay extends FrameLayout {
         build();
     }
 
+    @Override
+    public void draw(Canvas canvas) {
+        try {
+            super.draw(canvas);
+        } catch (Throwable t) {
+            CrashLog.reportUi(getContext(), t);
+        }
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(android.view.MotionEvent ev) {
+        try {
+            return super.dispatchTouchEvent(ev);
+        } catch (Throwable t) {
+            CrashLog.reportUi(getContext(), t);
+            return true;
+        }
+    }
+
     private int dp(float v) {
         return Ui.dp(getContext(), v);
     }

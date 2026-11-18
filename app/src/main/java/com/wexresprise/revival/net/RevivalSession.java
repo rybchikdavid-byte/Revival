@@ -341,28 +341,34 @@ public class RevivalSession {
 
     public void sendPosition(final float x, final float y, final float z, final float yaw) {
         if (role == SOLO || closed.get()) return;
-        writer.execute(() -> {
-            if (closed.get()) return;
-            if (role == HOST) {
-                broadcast("POS|1|" + x + "|" + y + "|" + z + "|" + yaw, null);
-            } else if (out != null) {
-                out.println("POS|" + x + "|" + y + "|" + z + "|" + yaw);
-            }
-        });
+        try {
+            writer.execute(() -> {
+                if (closed.get()) return;
+                if (role == HOST) {
+                    broadcast("POS|1|" + x + "|" + y + "|" + z + "|" + yaw, null);
+                } else if (out != null) {
+                    out.println("POS|" + x + "|" + y + "|" + z + "|" + yaw);
+                }
+            });
+        } catch (Throwable ignored) {
+        }
     }
 
     public void sendChat(String text) {
         final String clean = sanitize(text, 200);
         if (clean.isEmpty()) return;
         if (role != SOLO && !closed.get()) {
-            writer.execute(() -> {
-                if (closed.get()) return;
-                if (role == HOST) {
-                    broadcast("CHAT|1|" + clean, null);
-                } else if (out != null) {
-                    out.println("CHAT|" + clean);
-                }
-            });
+            try {
+                writer.execute(() -> {
+                    if (closed.get()) return;
+                    if (role == HOST) {
+                        broadcast("CHAT|1|" + clean, null);
+                    } else if (out != null) {
+                        out.println("CHAT|" + clean);
+                    }
+                });
+            } catch (Throwable ignored) {
+            }
         }
         dispatchChat(nick, clean);
     }
